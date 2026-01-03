@@ -21,8 +21,7 @@ constexpr uint8_t BUTTON_PIN = D5; // кнопка для выключения
 
 TM1637Display display(CLK_PIN, DIO_PIN);
 
-volatile bool servoEnabled = true; // управление сервоприводом через кнопку
-
+volatile bool servoEnabled = true; 
 void IRAM_ATTR handleButton() {
     servoEnabled = !servoEnabled; // переключаем состояние при нажатии
 }
@@ -52,6 +51,7 @@ void setup() {
 
     connectWiFi();
     setupTime();
+
 
     myservo.attach(SERVO_PIN);
 
