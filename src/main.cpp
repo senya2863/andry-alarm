@@ -5,9 +5,17 @@
 #include <Servo.h>
 
 Servo myservo;
+bool servoEnabled = true;
 
-const char* ssid = "BigDom";
-const char* password = "dpznrf21";
+struct ServoState {
+    int pos = 0;
+    int step = 1;           // направление движения
+    unsigned long lastMove = 0;
+    unsigned long interval = 10;  // миллисекунды между шагами
+} servoState;
+
+const char* ssid = "BigDom"; //название сети
+const char* password = "dpznrf21"; //пароль
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3 * 3600; // MSK = UTC+3
@@ -21,7 +29,6 @@ constexpr uint8_t BUTTON_PIN = D5; // кнопка для выключения
 
 TM1637Display display(CLK_PIN, DIO_PIN);
 
-volatile bool servoEnabled = true; 
 void IRAM_ATTR handleButton() {
     servoEnabled = !servoEnabled; // переключаем состояние при нажатии
 }
@@ -60,33 +67,45 @@ void setup() {
 }
 
 void loop() {
-    static uint32_t lastUpdate = 0;
-
+    static unsigned long lastDisplayUpdate = 0;
     struct tm timeInfo;
-    if (getLocalTime(&timeInfo)) {
-        if (millis() - lastUpdate >= 1000) {
-            lastUpdate = millis();
-            updateDisplay(timeInfo);
 
-            char buf[32];
-            strftime(buf, sizeof(buf), "%H:%M:%S", &timeInfo);
-            Serial.println(buf);
+    if (!getLocalTime(&timeInfo)) return;
+
+    unsigned long now = millis();
+
+    // --- Обновление дисплея раз в секунду ---
+    if (now - lastDisplayUpdate >= 1000) {
+        lastDisplayUpdate = now;
+        updateDisplay(timeInfo);
+
+        char buf[32];
+        strftime(buf, sizeof(buf), "%H:%M:%S", &timeInfo);
+        Serial.println(buf);
+    }
+
+//время будильника
+    bool timeToRun = (timeInfo.tm_hour == 21 && timeInfo.tm_min >= 10 && timeInfo.tm_min <= 35);
+
+    if (servoEnabled && timeToRun) {
+        // --- Non-blocking движение сервы ---
+        if (now - servoState.lastMove >= servoState.interval) {
+            servoState.lastMove = now;
+
+            // Двигаем серву
+            myservo.write(servoState.pos);
+
+            // Обновляем позицию
+            servoState.pos += servoState.step;
+
+            // Разворот направления на границах
+            if (servoState.pos >= 180) servoState.step = -1;
+            if (servoState.pos <= 0)   servoState.step = 1;
         }
-
-        // с 21:10 до 21:35
-        bool timeToRun = (timeInfo.tm_hour == 21 && timeInfo.tm_min >= 10 && timeInfo.tm_min <= 35);
-
-        if (servoEnabled && timeToRun) {
-            for (int pos = 0; pos <= 180; pos += 1) {
-                myservo.write(pos);
-                delay(10);
-            }
-            for (int pos = 180; pos >= 0; pos -= 1) {
-                myservo.write(pos);
-                delay(10);
-            }
-        } else {
-            myservo.write(0);
-        }
+    } else {
+        // Если время не подошло, держим серву в 0
+        myservo.write(0);
+        servoState.pos = 0;
+        servoState.step = 1;
     }
 }
